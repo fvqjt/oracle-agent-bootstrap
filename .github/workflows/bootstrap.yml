@@ -67,30 +67,5 @@ jobs:
           systemctl status oracle-agent --no-pager | head -8
           python3 -c "import json; print('agent_id:', json.load(open('/opt/oracle-agent/state.json'))['agent_id'])" 2>/dev/null \
             || echo "(agent not registered yet — check journalctl -u oracle-agent)"
-      - name: Install TG Agent (Runner Bot)
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: |
-          # 等待 oracle-agent 注册完成
-          for i in $(seq 1 30); do
-            [ -f /opt/oracle-agent/state.json ] && break
-            sleep 2
-          done
-          if [ ! -f /opt/oracle-agent/state.json ]; then
-            echo "WARN: oracle-agent state.json not found, skipping TG Bot"
-            exit 0
-          fi
-          # 安装 TG Bot
-          sudo mkdir -p /opt/tg-agent
-          sudo cp tg-agent/bot.py tg-agent/state_mgr.py tg-agent/status_reporter.py                 tg-agent/config.py tg-agent/requirements.txt /opt/tg-agent/
-          sudo chown -R runner:runner /opt/tg-agent
-          pip install --user -r /opt/tg-agent/requirements.txt
-          # systemd 服务（注入 Bot Token）
-          sudo cp tg-agent/tg-agent.service /etc/systemd/system/
-          sudo sed -i "s|\${TELEGRAM_BOT_TOKEN}|${TELEGRAM_BOT_TOKEN}|g"             /etc/systemd/system/tg-agent.service
-          sudo systemctl daemon-reload
-          sudo systemctl enable --now tg-agent
-          sleep 3
-          systemctl status tg-agent --no-pager | head -8 || true
       - name: Keep alive (Oracle decides when to end)
         run: sleep 99999
