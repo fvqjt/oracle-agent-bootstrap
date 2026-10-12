@@ -26,6 +26,7 @@ from config import (
     IDLE_TIMEOUT_SEC,
     STATUS_REPORT_INTERVAL_SEC,
     EXEC_TIMEOUT_SEC,
+    TG_BOT_POLLING,
     TG_SEND_FILE_LIMIT_MB,
     TG_RECV_FILE_LIMIT_MB,
     AGENT_DIR,
@@ -267,9 +268,29 @@ def main():
     app.add_handler(MessageHandler(filters.Document.ALL, on_document))
 
 
-    log.info("Starting Runner Bot (idle_timeout=%ds, report_interval=%ds)",
-             IDLE_TIMEOUT_SEC, STATUS_REPORT_INTERVAL_SEC)
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    log.info("Starting Runner Bot (idle_timeout=%ds, report_interval=%ds, bot_polling=%s)",
+             IDLE_TIMEOUT_SEC, STATUS_REPORT_INTERVAL_SEC, TG_BOT_POLLING)
+
+    if (TG_BOT_POLLING or "1") == "1":
+        # Legacy mode: this Bot owns the getUpdates lock and serves the user directly
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
+    else:
+        # Centralized mode: Oracle (dispatcher) owns getUpdates; this Runner is a
+        # pure exec agent (commands arrive via the oracle-agent task channel).
+        # Keep Application lifecycle alive so on_startup (status_reporter) runs.
+        log.warning("TG polling DISABLED — centralized mode (no getUpdates lock held)")
+
+        async def _keepalive():
+            await app.initialize()
+            try:
+                await app.start()
+                while True:
+                    await asyncio.sleep(3600)
+            finally:
+                await app.stop()
+                await app.shutdown()
+
+        asyncio.run(_keepalive())
 
 
 if __name__ == "__main__":

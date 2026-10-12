@@ -9,6 +9,10 @@ on:
         description: "unique id for run identification"
         required: false
         type: string
+      bot_polling:
+        description: "Runner Bot 是否轮询 Telegram；'0' = 纯执行 Agent（Oracle 集中式消费模式）"
+        required: false
+        default: "1"
       agent_name:
         description: "Agent name shown in Oracle controller"
         required: false
@@ -67,6 +71,7 @@ jobs:
       - name: Install TG Agent (Runner Bot)
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_BOT_POLLING: ${{ inputs.bot_polling || '1' }}
         run: |
           # 等待 oracle-agent 注册完成
           for i in $(seq 1 30); do
@@ -82,10 +87,15 @@ jobs:
           sudo cp tg-agent/bot.py tg-agent/state_mgr.py tg-agent/status_reporter.py \
                    tg-agent/config.py tg-agent/requirements.txt /opt/tg-agent/
           sudo chown -R runner:runner /opt/tg-agent
+          # status_reporter (runs as runner) reads agent state/config; make readable
+          sudo chmod 644 /opt/oracle-agent/state.json /opt/oracle-agent/config.json 2>/dev/null || true
           pip install --user -r /opt/tg-agent/requirements.txt
           # systemd 服务（注入 Bot Token）
           sudo cp tg-agent/tg-agent.service /etc/systemd/system/
           sudo sed -i "s|\${TELEGRAM_BOT_TOKEN}|${TELEGRAM_BOT_TOKEN}|g" \
+            /etc/systemd/system/tg-agent.service
+          # 集中式模式开关：注入 TG_BOT_POLLING（"0" = Runner Bot 不抢 getUpdates 锁）
+          sudo sed -i "s|\${TG_BOT_POLLING}|${TG_BOT_POLLING}|g" \
             /etc/systemd/system/tg-agent.service
           sudo systemctl daemon-reload
           sudo systemctl enable --now tg-agent

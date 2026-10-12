@@ -7,6 +7,7 @@ Wants=network-online.target
 User=runner
 Group=runner
 Environment=TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+Environment=TG_BOT_POLLING=${TG_BOT_POLLING}
 Environment=IDLE_TIMEOUT_SEC=600
 Environment=STATUS_REPORT_INTERVAL_SEC=60
 Environment=EXEC_TIMEOUT_SEC=180

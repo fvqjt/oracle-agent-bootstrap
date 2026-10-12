@@ -33,6 +33,7 @@ class StatusReporter:
             self._token = state["token"]
             config = json.loads(config_path.read_text())
             self._oracle_url = config["oracle_url"].rstrip("/")
+            self._user_agent = config.get("user_agent", "oracle-agent/0.1.0")
             return True
         except Exception as e:
             log.warning("cannot read agent info: %s", e)
@@ -56,6 +57,7 @@ class StatusReporter:
             headers={
                 "Authorization": f"Bearer {self._token}",
                 "Content-Type": "application/json",
+                "User-Agent": self._user_agent,
             },
         )
         urllib.request.urlopen(req, timeout=10)
