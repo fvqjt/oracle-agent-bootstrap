@@ -1,0 +1,22 @@
+[Unit]
+Description=TG Agent (Runner Bot)
+After=network-online.target oracle-agent.service
+Wants=network-online.target
+
+[Service]
+User=runner
+Group=runner
+Environment=TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+Environment=IDLE_TIMEOUT_SEC=600
+Environment=STATUS_REPORT_INTERVAL_SEC=60
+Environment=EXEC_TIMEOUT_SEC=180
+Environment=AGENT_DIR=/opt/oracle-agent
+Environment=TG_SEND_FILE_LIMIT_MB=50
+Environment=TG_RECV_FILE_LIMIT_MB=20
+WorkingDirectory=/opt/tg-agent
+ExecStart=/usr/bin/python3 /opt/tg-agent/bot.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

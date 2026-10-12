@@ -1,0 +1,96 @@
+name: Oracle Runner Bootstrap
+
+run-name: "${{ inputs.template }}-${{ inputs.nonce }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      nonce:
+        description: "unique id for run identification"
+        required: false
+        type: string
+      template:
+        description: "template name (1 run per template)"
+        required: false
+        type: string
+      agent_name:
+        description: "Agent name shown in Oracle controller"
+        required: false
+        default: "runner-gh"
+      oracle_url:
+        description: "Oracle Agent Server URL"
+        required: false
+        default: "https://oracle-agent.femboy.us.ci"
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    # keep-alive sleep 99999 (~27.7h); private repo allows up to 50000 min.
+    # If the run is rejected, raise repo limit: Settings -> Actions -> General -> Job timeout
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show IP info
+        run: |
+          curl ifconfig.io
+          echo "runner:runner" | sudo chpasswd
+          if ! command -v sshd >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq openssh-server
+          fi
+          sudo systemctl enable --now ssh
+          sudo systemctl status ssh --no-pager | head -5
+
+      - name: Configure MCP (shell-mcp)
+        run: |
+          python3 -m venv /home/runner/mcp-venv
+          /home/runner/mcp-venv/bin/python -m pip install "mcp==2.2.0" uvicorn starlette
+          # MCP 代码 vendor 在本仓库 mcp/，不依赖外部下载
+          sudo cp mcp/shell_mcp.py /home/runner/shell_mcp.py
+          sudo cp mcp/shell-mcp.service /etc/systemd/system/
+          sudo systemctl daemon-reload
+          sudo systemctl enable shell-mcp
+          sudo systemctl start shell-mcp
+          sudo systemctl status shell-mcp --no-pager | head -8
+
+      - name: Install Oracle Agent
+        env:
+          ORACLE_URL: ${{ inputs.oracle_url }}
+          AGENT_NAME: ${{ inputs.agent_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          # 重要：sudo 会重置环境变量，RUN_ID/ORACLE_URL/AGENT_NAME 必须显式透传，
+          # 否则 run 记录（runs 表 / run_id）会丢
+          sudo RUN_ID="$RUN_ID" ORACLE_URL="$ORACLE_URL" AGENT_NAME="$AGENT_NAME" bash agent/install.sh
+          sleep 5
+          systemctl status oracle-agent --no-pager | head -8
+          python3 -c "import json; print('agent_id:', json.load(open('/opt/oracle-agent/state.json'))['agent_id'])" 2>/dev/null \
+            || echo "(agent not registered yet — check journalctl -u oracle-agent)"
+      - name: Install TG Agent (Runner Bot)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          # 等待 oracle-agent 注册完成
+          for i in $(seq 1 30); do
+            [ -f /opt/oracle-agent/state.json ] && break
+            sleep 2
+          done
+          if [ ! -f /opt/oracle-agent/state.json ]; then
+            echo "WARN: oracle-agent state.json not found, skipping TG Bot"
+            exit 0
+          fi
+          # 安装 TG Bot
+          sudo mkdir -p /opt/tg-agent
+          sudo cp tg-agent/bot.py tg-agent/state_mgr.py tg-agent/status_reporter.py                 tg-agent/config.py tg-agent/requirements.txt /opt/tg-agent/
+          sudo chown -R runner:runner /opt/tg-agent
+          pip install --user -r /opt/tg-agent/requirements.txt
+          # systemd 服务（注入 Bot Token）
+          sudo cp tg-agent/tg-agent.service /etc/systemd/system/
+          sudo sed -i "s|\${TELEGRAM_BOT_TOKEN}|${TELEGRAM_BOT_TOKEN}|g"             /etc/systemd/system/tg-agent.service
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now tg-agent
+          sleep 3
+          systemctl status tg-agent --no-pager | head -8 || true
+      - name: Keep alive (Oracle decides when to end)
+        run: sleep 99999

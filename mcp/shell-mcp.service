@@ -1,0 +1,19 @@
+[Unit]
+Description=Shell MCP Server
+After=network.target
+
+[Service]
+Type=simple
+
+User=runner
+WorkingDirectory=/home/runner
+
+ExecStart=/home/runner/mcp-venv/bin/python /home/runner/shell_mcp.py
+
+Restart=always
+RestartSec=5
+
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

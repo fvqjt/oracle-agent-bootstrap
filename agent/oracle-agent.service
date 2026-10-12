@@ -1,0 +1,16 @@
+[Unit]
+Description=Oracle Runner Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/oracle-agent/agent.py
+WorkingDirectory=/opt/oracle-agent
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+User=root
+
+[Install]
+WantedBy=multi-user.target

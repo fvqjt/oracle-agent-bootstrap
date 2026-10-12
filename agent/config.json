@@ -1,0 +1,12 @@
+{
+  "oracle_url": "https://oracle-agent.femboy.us.ci",
+  "agent_name": "runner-gh",
+  "version": "0.1.0",
+  "capabilities": [
+    "ssh",
+    "agent"
+  ],
+  "heartbeat_interval_sec": 60,
+  "pull_timeout_sec": 30,
+  "user_agent": "oracle-agent/0.1.0"
+}

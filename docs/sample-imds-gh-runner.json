@@ -1,0 +1,165 @@
+{
+  "compute": {
+    "azEnvironment": "AzurePublicCloud",
+    "customData": "",
+    "evictionPolicy": "",
+    "isHostCompatibilityLayerVm": "false",
+    "licenseType": "",
+    "location": "eastus",
+    "name": "uLMR8wPao1HqWx",
+    "offer": "",
+    "osProfile": {
+      "adminUsername": "",
+      "computerName": "",
+      "disablePasswordAuthentication": ""
+    },
+    "osType": "Linux",
+    "placementGroupId": "",
+    "plan": {
+      "name": "",
+      "product": "",
+      "publisher": ""
+    },
+    "platformFaultDomain": "0",
+    "platformUpdateDomain": "0",
+    "priority": "",
+    "provider": "Microsoft.Compute",
+    "publicKeys": [],
+    "publisher": "",
+    "resourceGroupName": "azure-eastus-general-d97f159b-922f-498c-95f2-7e5c965a3882",
+    "resourceId": "/subscriptions/d97f159b-922f-498c-95f2-7e5c965a3882/resourceGroups/azure-eastus-general-d97f159b-922f-498c-95f2-7e5c965a3882/providers/Microsoft.Compute/virtualMachines/uLMR8wPao1HqWx",
+    "securityProfile": {
+      "secureBootEnabled": "false",
+      "virtualTpmEnabled": "false"
+    },
+    "sku": "",
+    "storageProfile": {
+      "dataDisks": [],
+      "imageReference": {
+        "id": "/subscriptions/0019feaf-6e36-4d23-acbf-b53de156cae2/resourceGroups/hostedcomputeims-403500522-rg/providers/Microsoft.Compute/galleries/imsgallery.403500522/images/image-2295-gen2-v2-sp/versions/20260920.314.1",
+        "offer": "",
+        "publisher": "",
+        "sku": "",
+        "version": ""
+      },
+      "osDisk": {
+        "caching": "ReadOnly",
+        "createOption": "FromImage",
+        "diffDiskSettings": {
+          "option": "Local"
+        },
+        "diskSizeGB": "75",
+        "encryptionSettings": {
+          "enabled": "false"
+        },
+        "image": {
+          "uri": ""
+        },
+        "managedDisk": {
+          "id": "/subscriptions/d97f159b-922f-498c-95f2-7e5c965a3882/resourceGroups/azure-eastus-general-d97f159b-922f-498c-95f2-7e5c965a3882/providers/Microsoft.Compute/disks/uLMR8wPao1HqWx-disk",
+          "storageAccountType": "Standard_LRS"
+        },
+        "name": "uLMR8wPao1HqWx-disk",
+        "osType": "Linux",
+        "vhd": {
+          "uri": ""
+        },
+        "writeAcceleratorEnabled": "false"
+      },
+      "resourceDisk": {
+        "size": "105728"
+      }
+    },
+    "subscriptionId": "d97f159b-922f-498c-95f2-7e5c965a3882",
+    "tags": "ExcludeMdeAutoProvisioning:True;OperatorOverridableTenantSettings.Tenant.Setting.BypassCmPeSyncForRepaves:True;SkipASMAV:true;SkipASMAzSecPack:true;SkipASMAzSecPackAutoConfig:true;SkipLinuxAzSecPack:true;SkipWindowsAzSecPack:true;azsecpack:true;hosted_compute.allocation_id:30878f47-1302-4f46-909c-f88540f5fb79;hosted_compute.base_ro_url:https://hosted-compute-request-orchestrator-prod-eus-01.githubapp.com/vm/v1;hosted_compute.enable_primer:true;hosted_compute.quota_id:azure-eastus-general-d97f159b-922f-498c-95f2-7e5c965a3882;hosted_compute.ro_audience:api://hosted-compute-ro;hosted_on_behalf_of:true",
+    "tagsList": [
+      {
+        "name": "ExcludeMdeAutoProvisioning",
+        "value": "True"
+      },
+      {
+        "name": "OperatorOverridableTenantSettings.Tenant.Setting.BypassCmPeSyncForRepaves",
+        "value": "True"
+      },
+      {
+        "name": "SkipASMAV",
+        "value": "true"
+      },
+      {
+        "name": "SkipASMAzSecPack",
+        "value": "true"
+      },
+      {
+        "name": "SkipASMAzSecPackAutoConfig",
+        "value": "true"
+      },
+      {
+        "name": "SkipLinuxAzSecPack",
+        "value": "true"
+      },
+      {
+        "name": "SkipWindowsAzSecPack",
+        "value": "true"
+      },
+      {
+        "name": "azsecpack",
+        "value": "true"
+      },
+      {
+        "name": "hosted_compute.allocation_id",
+        "value": "30878f47-1302-4f46-909c-f88540f5fb79"
+      },
+      {
+        "name": "hosted_compute.base_ro_url",
+        "value": "https://hosted-compute-request-orchestrator-prod-eus-01.githubapp.com/vm/v1"
+      },
+      {
+        "name": "hosted_compute.enable_primer",
+        "value": "true"
+      },
+      {
+        "name": "hosted_compute.quota_id",
+        "value": "azure-eastus-general-d97f159b-922f-498c-95f2-7e5c965a3882"
+      },
+      {
+        "name": "hosted_compute.ro_audience",
+        "value": "api://hosted-compute-ro"
+      },
+      {
+        "name": "hosted_on_behalf_of",
+        "value": "true"
+      }
+    ],
+    "userData": "",
+    "version": "20260920.314.1",
+    "vmId": "45474b60-246c-4fa1-8105-3239a57e06d4",
+    "vmScaleSetName": "",
+    "vmSize": "Standard_D2ads_v5",
+    "zone": ""
+  },
+  "network": {
+    "interface": [
+      {
+        "ipv4": {
+          "ipAddress": [
+            {
+              "privateIpAddress": "10.1.1.127",
+              "publicIpAddress": ""
+            }
+          ],
+          "subnet": [
+            {
+              "address": "10.1.0.0",
+              "prefix": "20"
+            }
+          ]
+        },
+        "ipv6": {
+          "ipAddress": []
+        },
+        "macAddress": "002248333B9D"
+      }
+    ]
+  },
+  "egress_ip_ifconfig": "172.214.47.24"
+}
