@@ -5,10 +5,16 @@ Runs on the Runner with NO third-party dependencies. All communication is
 outbound to the Oracle server:
     register -> heartbeat/pull loop -> execute task -> report result
 
-Config:     config.json (oracle_url, agent_name, capabilities, ...)
+Concurrency model (v0.2):
+    pull-loop 主线程只做 pull + heartbeat + 提交；execute 跑在
+    ThreadPoolExecutor (max_workers = max_concurrent, 默认 32, 0=无界)
+    里，支持同时跑 N 条任务，sleep / 长任务不会阻塞后续命令。
+
+Config:     config.json (oracle_url, agent_name, capabilities, max_concurrent, ...)
 State:      state.json (agent_id + token, created on first register, chmod 600)
 Run:        python3 agent.py
 """
+import concurrent.futures
 import json
 import os
 import re
@@ -16,6 +22,7 @@ import secrets
 import signal
 import socket
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -37,11 +44,21 @@ PULL_TIMEOUT = int(CONFIG.get("pull_timeout_sec", 30))
 HEARTBEAT_INTERVAL = int(CONFIG.get("heartbeat_interval_sec", 60))
 USER_AGENT = CONFIG.get("user_agent") or ("oracle-agent/" + str(CONFIG.get("version", "0.1.0")))
 
+# 并发上限：max_concurrent=0 表示无界（每个任务一个线程）；>0 则作为线程池上限。
+# 默认 32，对 runner 足够；设 0 则彻底无界。
+MAX_CONCURRENT = int(CONFIG.get("max_concurrent", 32))
+
 AGENT_ID = None
 TOKEN = None
 STOP = False
 _pty_sessions = {}  # session_id -> state dict
 _ws_client = None   # global WSClient instance
+
+# 共享 ThreadPoolExecutor: 0 => 无界, 用 threading.Thread per task
+_executor: "concurrent.futures.ThreadPoolExecutor | None" = None
+_executor_lock = threading.Lock()
+_active_tasks: set = set()  # 正在跑的任务 task_id（用于日志统计）
+_active_lock = threading.Lock()
 
 
 def log(msg: str) -> None:
@@ -130,8 +147,6 @@ def public_ip() -> str:
 
 
 def default_agent_id() -> str:
-    # GitHub 会复用 VM 主机名；纯 hostname 做 agent_id 会与历史记录碰撞(403)。
-    # 优先用 Azure VM instance ID（全局唯一、稳定）做唯一性来源，取不到再回退随机后缀。
     host = re.sub(r"[^A-Za-z0-9._-]", "-", socket.gethostname() or "unknown")
     vm = str(azure_metadata().get("compute", {}).get("vmId") or "")
     uniq = vm[:8] if vm else secrets.token_hex(3)
@@ -162,7 +177,6 @@ def register() -> tuple[str, str]:
         resp = _request("/api/v1/agent/register", body, timeout=15)
     except AgentHTTPError as e:
         if e.code == 403 and "agent_id already exists" in str(e.detail):
-            # id 碰撞（主机名复用等）：换一个新 id 重试
             fresh = f"{default_agent_id()}"
             log(f"agent_id collision; re-registering as {fresh} ({e})")
             body["agent_id"] = fresh
@@ -212,7 +226,7 @@ def execute(task: dict) -> tuple[str, dict | None, str | None]:
         return "timeout", e.output, e.message
     except HandlerError as e:
         return e.status, e.output, e.message
-    except Exception as e:  # defensive: never let one bad task kill the loop
+    except Exception as e:
         return "failed", None, f"{type(e).__name__}: {e}"
 
 
@@ -256,7 +270,6 @@ def _signal_handler(signum, _frame) -> None:
     log(f"received signal {signum}, stopping gracefully")
 
 
-
 def _on_ws_message(msg: dict):
     """Handle messages from server via WebSocket."""
     msg_type = msg.get("type")
@@ -270,7 +283,6 @@ def _on_ws_message(msg: dict):
             if state:
                 _pty_sessions[session_id] = state
         else:
-            # Non-PTY exec via WS: run and send result back
             import subprocess
             timeout = msg.get("timeout_sec", 60)
             try:
@@ -319,6 +331,50 @@ def _start_ws_client():
     return client
 
 
+# ---------------------------------------------------------------------------
+# 并发执行：pull-loop 主线程不阻塞，execute 跑在 worker 里
+# ---------------------------------------------------------------------------
+
+def _execute_and_report(task: dict) -> None:
+    """Worker 线程: 跑一个任务并回报结果（异常兜底，不影响其他任务）。"""
+    task_id = task.get("task_id", "?")
+    type_ = task.get("type")
+    with _active_lock:
+        _active_tasks.add(task_id)
+        log(f"task {task_id[:12]} type={type_} start (in-flight={len(_active_tasks)})")
+    started_at = datetime.now(timezone.utc).isoformat()
+    try:
+        status, output, error = execute(task)
+    except Exception as e:
+        status, output, error = "failed", None, f"{type(e).__name__}: {e}"
+    finished_at = datetime.now(timezone.utc).isoformat()
+    try:
+        report_result(task_id, status, output, error, started_at, finished_at)
+        log(f"task {task_id[:12]} -> {status}")
+    except AgentHTTPError as e:
+        log(f"task {task_id[:12]} report failed: {e}")
+    finally:
+        with _active_lock:
+            _active_tasks.discard(task_id)
+
+
+def _submit(task: dict) -> None:
+    """把任务提交到线程池 / 新线程（无界模式）。"""
+    global _executor
+    if MAX_CONCURRENT <= 0:
+        # 无界：每个任务开一个线程
+        t = threading.Thread(target=_execute_and_report, args=(task,), daemon=True)
+        t.start()
+        return
+    with _executor_lock:
+        if _executor is None:
+            _executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=MAX_CONCURRENT,
+                thread_name_prefix="oracle-task",
+            )
+        _executor.submit(_execute_and_report, task)
+
+
 def main() -> int:
     global AGENT_ID, TOKEN, STOP
     signal.signal(signal.SIGTERM, _signal_handler)
@@ -328,7 +384,6 @@ def main() -> int:
         log("error: config.json missing or oracle_url empty")
         return 1
 
-    # Register (or re-register) once at startup.
     for attempt in range(1, 6):
         try:
             AGENT_ID, TOKEN = register()
@@ -342,7 +397,7 @@ def main() -> int:
     log(f"registered as {AGENT_ID}")
 
     last_heartbeat = 0.0
-    ws = None  # WS client not yet wired up; fall back to pull loop
+    ws = None
     while not STOP:
         now = time.time()
         if now - last_heartbeat >= HEARTBEAT_INTERVAL:
@@ -352,12 +407,10 @@ def main() -> int:
             except AgentHTTPError as e:
                 log(f"heartbeat failed: {e}")
 
-        # If WS is connected, skip pull (WS handles task dispatch)
         if ws and ws.is_connected():
             time.sleep(1)
             continue
 
-        # WS disconnected: fall back to pull loop
         try:
             resp = pull()
         except AgentHTTPError as e:
@@ -369,16 +422,21 @@ def main() -> int:
         if not task:
             continue
 
-        task_id = task.get("task_id", "?")
-        log(f"task {task_id[:12]} type={task.get('type')} started")
-        started_at = datetime.now(timezone.utc).isoformat()
-        status, output, error = execute(task)
-        finished_at = datetime.now(timezone.utc).isoformat()
-        try:
-            report_result(task_id, status, output, error, started_at, finished_at)
-            log(f"task {task_id[:12]} -> {status}")
-        except AgentHTTPError as e:
-            log(f"report failed: {e}")
+        _submit(task)  # 非阻塞提交；execute 在 worker 里跑，主循环继续 pull
+
+    # 优雅退出：等所有 in-flight 任务完成（最多 10s）
+    with _active_lock:
+        remaining = len(_active_tasks)
+    if remaining:
+        log(f"waiting for {remaining} in-flight task(s) to finish...")
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            with _active_lock:
+                if not _active_tasks:
+                    break
+            time.sleep(0.5)
+    if _executor is not None:
+        _executor.shutdown(wait=False)
 
     log("agent stopped")
     return 0
